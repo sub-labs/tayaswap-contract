@@ -9,7 +9,7 @@ contract DeployRouter is Script {
     function run() external returns (TayaswapRouter router) {
         vm.startBroadcast();
         router = new TayaswapRouter(
-            address(0x4ae239A57053FA2F664a42D2b43E607C6827f45d), address(0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9)
+            address(0x2487100F1716EC5B1cd11F3ccEc14fCeDc8AC2fE), address(0x760AfE86e5de5fa0Ee542fc7B7B713e1c5425701)
         );
         vm.stopBroadcast();
     }
