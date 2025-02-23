@@ -1,23 +1,20 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity 0.8.25;
 
-pragma solidity =0.8.25;
+import "./libraries/TransferHelper.sol";
+import "./libraries/SwapLibrary.sol";
+import "./interfaces/IERC20.sol";
 
-import {ITayaswapFactory} from "./interfaces/ITayaswapFactory.sol";
-import {ITayaswapRouter} from "./interfaces/ITayaswapRouter.sol";
-import {ITayaswapPair} from "./interfaces/ITayaswapPair.sol";
-import {IERC20} from "./interfaces/IERC20.sol";
-import {IWETH} from "./interfaces/IWETH.sol";
+import "./interfaces/ISwapRouter.sol";
+import "./interfaces/ISwapFactory.sol";
+import "./interfaces/IWETH.sol";
 
-import {TransferHelper} from "./libraries/TransferHelper.sol";
-import {TayaswapLibrary} from "./libraries/TayaswapLibrary.sol";
-
-contract TayaswapRouter is ITayaswapRouter {
-    //solhint-disable-next-line immutable-vars-naming
+contract SwapRouter is ISwapRouter {
     address public immutable override factory;
     address public immutable override WETH;
 
     modifier ensure(uint256 deadline) {
-        require(deadline >= block.timestamp, "TayaswapRouter: EXPIRED");
+        require(deadline >= block.timestamp, "SwapRouter: EXPIRED");
         _;
     }
 
@@ -40,21 +37,21 @@ contract TayaswapRouter is ITayaswapRouter {
         uint256 amountBMin
     ) internal virtual returns (uint256 amountA, uint256 amountB) {
         // create the pair if it doesn't exist yet
-        if (ITayaswapFactory(factory).getPair(tokenA, tokenB) == address(0)) {
-            ITayaswapFactory(factory).createPair(tokenA, tokenB);
+        if (ISwapFactory(factory).getPair(tokenA, tokenB) == address(0)) {
+            ISwapFactory(factory).createPair(tokenA, tokenB);
         }
-        (uint256 reserveA, uint256 reserveB) = TayaswapLibrary.getReserves(factory, tokenA, tokenB);
+        (uint256 reserveA, uint256 reserveB) = SwapLibrary.getReserves(factory, tokenA, tokenB);
         if (reserveA == 0 && reserveB == 0) {
             (amountA, amountB) = (amountADesired, amountBDesired);
         } else {
-            uint256 amountBOptimal = TayaswapLibrary.quote(amountADesired, reserveA, reserveB);
+            uint256 amountBOptimal = SwapLibrary.quote(amountADesired, reserveA, reserveB);
             if (amountBOptimal <= amountBDesired) {
-                require(amountBOptimal >= amountBMin, "TayaswapRouter: INSUFFICIENT_B_AMOUNT");
+                require(amountBOptimal >= amountBMin, "SwapRouter: INSUFFICIENT_B_AMOUNT");
                 (amountA, amountB) = (amountADesired, amountBOptimal);
             } else {
-                uint256 amountAOptimal = TayaswapLibrary.quote(amountBDesired, reserveB, reserveA);
+                uint256 amountAOptimal = SwapLibrary.quote(amountBDesired, reserveB, reserveA);
                 assert(amountAOptimal <= amountADesired);
-                require(amountAOptimal >= amountAMin, "TayaswapRouter: INSUFFICIENT_A_AMOUNT");
+                require(amountAOptimal >= amountAMin, "SwapRouter: INSUFFICIENT_A_AMOUNT");
                 (amountA, amountB) = (amountAOptimal, amountBDesired);
             }
         }
@@ -71,10 +68,10 @@ contract TayaswapRouter is ITayaswapRouter {
         uint256 deadline
     ) external virtual override ensure(deadline) returns (uint256 amountA, uint256 amountB, uint256 liquidity) {
         (amountA, amountB) = _addLiquidity(tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin);
-        address pair = TayaswapLibrary.pairFor(factory, tokenA, tokenB);
+        address pair = SwapLibrary.pairFor(factory, tokenA, tokenB);
         TransferHelper.safeTransferFrom(tokenA, msg.sender, pair, amountA);
         TransferHelper.safeTransferFrom(tokenB, msg.sender, pair, amountB);
-        liquidity = ITayaswapPair(pair).mint(to);
+        liquidity = ISwapPair(pair).mint(to);
     }
 
     function addLiquidityETH(
@@ -94,15 +91,13 @@ contract TayaswapRouter is ITayaswapRouter {
     {
         (amountToken, amountETH) =
             _addLiquidity(token, WETH, amountTokenDesired, msg.value, amountTokenMin, amountETHMin);
-        address pair = TayaswapLibrary.pairFor(factory, token, WETH);
+        address pair = SwapLibrary.pairFor(factory, token, WETH);
         TransferHelper.safeTransferFrom(token, msg.sender, pair, amountToken);
         IWETH(WETH).deposit{value: amountETH}();
         assert(IWETH(WETH).transfer(pair, amountETH));
-        liquidity = ITayaswapPair(pair).mint(to);
+        liquidity = ISwapPair(pair).mint(to);
         // refund dust eth, if any
-        if (msg.value > amountETH) {
-            TransferHelper.safeTransferETH(msg.sender, msg.value - amountETH);
-        }
+        if (msg.value > amountETH) TransferHelper.safeTransferETH(msg.sender, msg.value - amountETH);
     }
 
     // **** REMOVE LIQUIDITY ****
@@ -115,13 +110,13 @@ contract TayaswapRouter is ITayaswapRouter {
         address to,
         uint256 deadline
     ) public virtual override ensure(deadline) returns (uint256 amountA, uint256 amountB) {
-        address pair = TayaswapLibrary.pairFor(factory, tokenA, tokenB);
-        ITayaswapPair(pair).transferFrom(msg.sender, pair, liquidity); // send liquidity to pair
-        (uint256 amount0, uint256 amount1) = ITayaswapPair(pair).burn(to);
-        (address token0,) = TayaswapLibrary.sortTokens(tokenA, tokenB);
+        address pair = SwapLibrary.pairFor(factory, tokenA, tokenB);
+        ISwapPair(pair).transferFrom(msg.sender, pair, liquidity); // send liquidity to pair
+        (uint256 amount0, uint256 amount1) = ISwapPair(pair).burn(to);
+        (address token0,) = SwapLibrary.sortTokens(tokenA, tokenB);
         (amountA, amountB) = tokenA == token0 ? (amount0, amount1) : (amount1, amount0);
-        require(amountA >= amountAMin, "TayaswapRouter: INSUFFICIENT_A_AMOUNT");
-        require(amountB >= amountBMin, "TayaswapRouter: INSUFFICIENT_B_AMOUNT");
+        require(amountA >= amountAMin, "SwapRouter: INSUFFICIENT_A_AMOUNT");
+        require(amountB >= amountBMin, "SwapRouter: INSUFFICIENT_B_AMOUNT");
     }
 
     function removeLiquidityETH(
@@ -152,9 +147,9 @@ contract TayaswapRouter is ITayaswapRouter {
         bytes32 r,
         bytes32 s
     ) external virtual override returns (uint256 amountA, uint256 amountB) {
-        address pair = TayaswapLibrary.pairFor(factory, tokenA, tokenB);
+        address pair = SwapLibrary.pairFor(factory, tokenA, tokenB);
         uint256 value = approveMax ? type(uint256).max : liquidity;
-        ITayaswapPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
+        ISwapPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
         (amountA, amountB) = removeLiquidity(tokenA, tokenB, liquidity, amountAMin, amountBMin, to, deadline);
     }
 
@@ -170,9 +165,9 @@ contract TayaswapRouter is ITayaswapRouter {
         bytes32 r,
         bytes32 s
     ) external virtual override returns (uint256 amountToken, uint256 amountETH) {
-        address pair = TayaswapLibrary.pairFor(factory, token, WETH);
+        address pair = SwapLibrary.pairFor(factory, token, WETH);
         uint256 value = approveMax ? type(uint256).max : liquidity;
-        ITayaswapPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
+        ISwapPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
         (amountToken, amountETH) = removeLiquidityETH(token, liquidity, amountTokenMin, amountETHMin, to, deadline);
     }
 
@@ -203,9 +198,9 @@ contract TayaswapRouter is ITayaswapRouter {
         bytes32 r,
         bytes32 s
     ) external virtual override returns (uint256 amountETH) {
-        address pair = TayaswapLibrary.pairFor(factory, token, WETH);
+        address pair = SwapLibrary.pairFor(factory, token, WETH);
         uint256 value = approveMax ? type(uint256).max : liquidity;
-        ITayaswapPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
+        ISwapPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
         amountETH = removeLiquidityETHSupportingFeeOnTransferTokens(
             token, liquidity, amountTokenMin, amountETHMin, to, deadline
         );
@@ -216,14 +211,12 @@ contract TayaswapRouter is ITayaswapRouter {
     function _swap(uint256[] memory amounts, address[] memory path, address _to) internal virtual {
         for (uint256 i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
-            (address token0,) = TayaswapLibrary.sortTokens(input, output);
+            (address token0,) = SwapLibrary.sortTokens(input, output);
             uint256 amountOut = amounts[i + 1];
             (uint256 amount0Out, uint256 amount1Out) =
                 input == token0 ? (uint256(0), amountOut) : (amountOut, uint256(0));
-            address to = i < path.length - 2 ? TayaswapLibrary.pairFor(factory, output, path[i + 2]) : _to;
-            ITayaswapPair(TayaswapLibrary.pairFor(factory, input, output)).swap(
-                amount0Out, amount1Out, to, new bytes(0)
-            );
+            address to = i < path.length - 2 ? SwapLibrary.pairFor(factory, output, path[i + 2]) : _to;
+            ISwapPair(SwapLibrary.pairFor(factory, input, output)).swap(amount0Out, amount1Out, to, new bytes(0));
         }
     }
 
@@ -234,11 +227,9 @@ contract TayaswapRouter is ITayaswapRouter {
         address to,
         uint256 deadline
     ) external virtual override ensure(deadline) returns (uint256[] memory amounts) {
-        amounts = TayaswapLibrary.getAmountsOut(factory, amountIn, path);
-        require(amounts[amounts.length - 1] >= amountOutMin, "TayaswapRouter: INSUFFICIENT_OUTPUT_AMOUNT");
-        TransferHelper.safeTransferFrom(
-            path[0], msg.sender, TayaswapLibrary.pairFor(factory, path[0], path[1]), amounts[0]
-        );
+        amounts = SwapLibrary.getAmountsOut(factory, amountIn, path);
+        require(amounts[amounts.length - 1] >= amountOutMin, "SwapRouter: INSUFFICIENT_OUTPUT_AMOUNT");
+        TransferHelper.safeTransferFrom(path[0], msg.sender, SwapLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
         _swap(amounts, path, to);
     }
 
@@ -249,11 +240,9 @@ contract TayaswapRouter is ITayaswapRouter {
         address to,
         uint256 deadline
     ) external virtual override ensure(deadline) returns (uint256[] memory amounts) {
-        amounts = TayaswapLibrary.getAmountsIn(factory, amountOut, path);
-        require(amounts[0] <= amountInMax, "TayaswapRouter: EXCESSIVE_INPUT_AMOUNT");
-        TransferHelper.safeTransferFrom(
-            path[0], msg.sender, TayaswapLibrary.pairFor(factory, path[0], path[1]), amounts[0]
-        );
+        amounts = SwapLibrary.getAmountsIn(factory, amountOut, path);
+        require(amounts[0] <= amountInMax, "SwapRouter: EXCESSIVE_INPUT_AMOUNT");
+        TransferHelper.safeTransferFrom(path[0], msg.sender, SwapLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
         _swap(amounts, path, to);
     }
 
@@ -265,11 +254,11 @@ contract TayaswapRouter is ITayaswapRouter {
         ensure(deadline)
         returns (uint256[] memory amounts)
     {
-        require(path[0] == WETH, "TayaswapRouter: INVALID_PATH");
-        amounts = TayaswapLibrary.getAmountsOut(factory, msg.value, path);
-        require(amounts[amounts.length - 1] >= amountOutMin, "TayaswapRouter: INSUFFICIENT_OUTPUT_AMOUNT");
+        require(path[0] == WETH, "SwapRouter: INVALID_PATH");
+        amounts = SwapLibrary.getAmountsOut(factory, msg.value, path);
+        require(amounts[amounts.length - 1] >= amountOutMin, "SwapRouter: INSUFFICIENT_OUTPUT_AMOUNT");
         IWETH(WETH).deposit{value: amounts[0]}();
-        assert(IWETH(WETH).transfer(TayaswapLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
+        assert(IWETH(WETH).transfer(SwapLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
         _swap(amounts, path, to);
     }
 
@@ -280,12 +269,10 @@ contract TayaswapRouter is ITayaswapRouter {
         address to,
         uint256 deadline
     ) external virtual override ensure(deadline) returns (uint256[] memory amounts) {
-        require(path[path.length - 1] == WETH, "TayaswapRouter: INVALID_PATH");
-        amounts = TayaswapLibrary.getAmountsIn(factory, amountOut, path);
-        require(amounts[0] <= amountInMax, "TayaswapRouter: EXCESSIVE_INPUT_AMOUNT");
-        TransferHelper.safeTransferFrom(
-            path[0], msg.sender, TayaswapLibrary.pairFor(factory, path[0], path[1]), amounts[0]
-        );
+        require(path[path.length - 1] == WETH, "SwapRouter: INVALID_PATH");
+        amounts = SwapLibrary.getAmountsIn(factory, amountOut, path);
+        require(amounts[0] <= amountInMax, "SwapRouter: EXCESSIVE_INPUT_AMOUNT");
+        TransferHelper.safeTransferFrom(path[0], msg.sender, SwapLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
         _swap(amounts, path, address(this));
         IWETH(WETH).withdraw(amounts[amounts.length - 1]);
         TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
@@ -298,12 +285,10 @@ contract TayaswapRouter is ITayaswapRouter {
         address to,
         uint256 deadline
     ) external virtual override ensure(deadline) returns (uint256[] memory amounts) {
-        require(path[path.length - 1] == WETH, "TayaswapRouter: INVALID_PATH");
-        amounts = TayaswapLibrary.getAmountsOut(factory, amountIn, path);
-        require(amounts[amounts.length - 1] >= amountOutMin, "TayaswapRouter: INSUFFICIENT_OUTPUT_AMOUNT");
-        TransferHelper.safeTransferFrom(
-            path[0], msg.sender, TayaswapLibrary.pairFor(factory, path[0], path[1]), amounts[0]
-        );
+        require(path[path.length - 1] == WETH, "SwapRouter: INVALID_PATH");
+        amounts = SwapLibrary.getAmountsOut(factory, amountIn, path);
+        require(amounts[amounts.length - 1] >= amountOutMin, "SwapRouter: INSUFFICIENT_OUTPUT_AMOUNT");
+        TransferHelper.safeTransferFrom(path[0], msg.sender, SwapLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
         _swap(amounts, path, address(this));
         IWETH(WETH).withdraw(amounts[amounts.length - 1]);
         TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
@@ -317,16 +302,14 @@ contract TayaswapRouter is ITayaswapRouter {
         ensure(deadline)
         returns (uint256[] memory amounts)
     {
-        require(path[0] == WETH, "TayaswapRouter: INVALID_PATH");
-        amounts = TayaswapLibrary.getAmountsIn(factory, amountOut, path);
-        require(amounts[0] <= msg.value, "TayaswapRouter: EXCESSIVE_INPUT_AMOUNT");
+        require(path[0] == WETH, "SwapRouter: INVALID_PATH");
+        amounts = SwapLibrary.getAmountsIn(factory, amountOut, path);
+        require(amounts[0] <= msg.value, "SwapRouter: EXCESSIVE_INPUT_AMOUNT");
         IWETH(WETH).deposit{value: amounts[0]}();
-        assert(IWETH(WETH).transfer(TayaswapLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
+        assert(IWETH(WETH).transfer(SwapLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
         _swap(amounts, path, to);
         // refund dust eth, if any
-        if (msg.value > amounts[0]) {
-            TransferHelper.safeTransferETH(msg.sender, msg.value - amounts[0]);
-        }
+        if (msg.value > amounts[0]) TransferHelper.safeTransferETH(msg.sender, msg.value - amounts[0]);
     }
 
     // **** SWAP (supporting fee-on-transfer tokens) ****
@@ -334,8 +317,8 @@ contract TayaswapRouter is ITayaswapRouter {
     function _swapSupportingFeeOnTransferTokens(address[] memory path, address _to) internal virtual {
         for (uint256 i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
-            (address token0,) = TayaswapLibrary.sortTokens(input, output);
-            ITayaswapPair pair = ITayaswapPair(TayaswapLibrary.pairFor(factory, input, output));
+            (address token0,) = SwapLibrary.sortTokens(input, output);
+            ISwapPair pair = ISwapPair(SwapLibrary.pairFor(factory, input, output));
             uint256 amountInput;
             uint256 amountOutput;
             {
@@ -344,11 +327,11 @@ contract TayaswapRouter is ITayaswapRouter {
                 (uint256 reserveInput, uint256 reserveOutput) =
                     input == token0 ? (reserve0, reserve1) : (reserve1, reserve0);
                 amountInput = IERC20(input).balanceOf(address(pair)) - reserveInput;
-                amountOutput = TayaswapLibrary.getAmountOut(amountInput, reserveInput, reserveOutput);
+                amountOutput = SwapLibrary.getAmountOut(amountInput, reserveInput, reserveOutput);
             }
             (uint256 amount0Out, uint256 amount1Out) =
                 input == token0 ? (uint256(0), amountOutput) : (amountOutput, uint256(0));
-            address to = i < path.length - 2 ? TayaswapLibrary.pairFor(factory, output, path[i + 2]) : _to;
+            address to = i < path.length - 2 ? SwapLibrary.pairFor(factory, output, path[i + 2]) : _to;
             pair.swap(amount0Out, amount1Out, to, new bytes(0));
         }
     }
@@ -360,14 +343,12 @@ contract TayaswapRouter is ITayaswapRouter {
         address to,
         uint256 deadline
     ) external virtual override ensure(deadline) {
-        TransferHelper.safeTransferFrom(
-            path[0], msg.sender, TayaswapLibrary.pairFor(factory, path[0], path[1]), amountIn
-        );
+        TransferHelper.safeTransferFrom(path[0], msg.sender, SwapLibrary.pairFor(factory, path[0], path[1]), amountIn);
         uint256 balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
         _swapSupportingFeeOnTransferTokens(path, to);
         require(
             IERC20(path[path.length - 1]).balanceOf(to) - balanceBefore >= amountOutMin,
-            "TayaswapRouter: INSUFFICIENT_OUTPUT_AMOUNT"
+            "SwapRouter: INSUFFICIENT_OUTPUT_AMOUNT"
         );
     }
 
@@ -377,15 +358,15 @@ contract TayaswapRouter is ITayaswapRouter {
         address to,
         uint256 deadline
     ) external payable virtual override ensure(deadline) {
-        require(path[0] == WETH, "TayaswapRouter: INVALID_PATH");
+        require(path[0] == WETH, "SwapRouter: INVALID_PATH");
         uint256 amountIn = msg.value;
         IWETH(WETH).deposit{value: amountIn}();
-        assert(IWETH(WETH).transfer(TayaswapLibrary.pairFor(factory, path[0], path[1]), amountIn));
+        assert(IWETH(WETH).transfer(SwapLibrary.pairFor(factory, path[0], path[1]), amountIn));
         uint256 balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
         _swapSupportingFeeOnTransferTokens(path, to);
         require(
             IERC20(path[path.length - 1]).balanceOf(to) - balanceBefore >= amountOutMin,
-            "TayaswapRouter: INSUFFICIENT_OUTPUT_AMOUNT"
+            "SwapRouter: INSUFFICIENT_OUTPUT_AMOUNT"
         );
     }
 
@@ -396,13 +377,11 @@ contract TayaswapRouter is ITayaswapRouter {
         address to,
         uint256 deadline
     ) external virtual override ensure(deadline) {
-        require(path[path.length - 1] == WETH, "TayaswapRouter: INVALID_PATH");
-        TransferHelper.safeTransferFrom(
-            path[0], msg.sender, TayaswapLibrary.pairFor(factory, path[0], path[1]), amountIn
-        );
+        require(path[path.length - 1] == WETH, "SwapRouter: INVALID_PATH");
+        TransferHelper.safeTransferFrom(path[0], msg.sender, SwapLibrary.pairFor(factory, path[0], path[1]), amountIn);
         _swapSupportingFeeOnTransferTokens(path, address(this));
         uint256 amountOut = IERC20(WETH).balanceOf(address(this));
-        require(amountOut >= amountOutMin, "TayaswapRouter: INSUFFICIENT_OUTPUT_AMOUNT");
+        require(amountOut >= amountOutMin, "SwapRouter: INSUFFICIENT_OUTPUT_AMOUNT");
         IWETH(WETH).withdraw(amountOut);
         TransferHelper.safeTransferETH(to, amountOut);
     }
@@ -415,7 +394,7 @@ contract TayaswapRouter is ITayaswapRouter {
         override
         returns (uint256 amountB)
     {
-        return TayaswapLibrary.quote(amountA, reserveA, reserveB);
+        return SwapLibrary.quote(amountA, reserveA, reserveB);
     }
 
     function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut)
@@ -425,7 +404,7 @@ contract TayaswapRouter is ITayaswapRouter {
         override
         returns (uint256 amountOut)
     {
-        return TayaswapLibrary.getAmountOut(amountIn, reserveIn, reserveOut);
+        return SwapLibrary.getAmountOut(amountIn, reserveIn, reserveOut);
     }
 
     function getAmountIn(uint256 amountOut, uint256 reserveIn, uint256 reserveOut)
@@ -435,7 +414,7 @@ contract TayaswapRouter is ITayaswapRouter {
         override
         returns (uint256 amountIn)
     {
-        return TayaswapLibrary.getAmountIn(amountOut, reserveIn, reserveOut);
+        return SwapLibrary.getAmountIn(amountOut, reserveIn, reserveOut);
     }
 
     function getAmountsOut(uint256 amountIn, address[] memory path)
@@ -445,7 +424,7 @@ contract TayaswapRouter is ITayaswapRouter {
         override
         returns (uint256[] memory amounts)
     {
-        return TayaswapLibrary.getAmountsOut(factory, amountIn, path);
+        return SwapLibrary.getAmountsOut(factory, amountIn, path);
     }
 
     function getAmountsIn(uint256 amountOut, address[] memory path)
@@ -455,6 +434,6 @@ contract TayaswapRouter is ITayaswapRouter {
         override
         returns (uint256[] memory amounts)
     {
-        return TayaswapLibrary.getAmountsIn(factory, amountOut, path);
+        return SwapLibrary.getAmountsIn(factory, amountOut, path);
     }
 }

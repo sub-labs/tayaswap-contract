@@ -1,11 +1,11 @@
-// SPDX-License-Identifier: MIT
-pragma solidity =0.8.25;
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity 0.8.25;
 
-import "./interfaces/ITayaswapERC20.sol";
+import "./interfaces/ISwapERC20.sol";
 
-contract TayaswapERC20 is ITayaswapERC20 {
-    string public constant name = "Tayaswap LPs";
-    string public constant symbol = "Taya-LP";
+contract SwapERC20 is ISwapERC20 {
+    string public constant name = "Swap LPs";
+    string public constant symbol = "Swap-LP";
     uint8 public constant decimals = 18;
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
@@ -76,7 +76,7 @@ contract TayaswapERC20 is ITayaswapERC20 {
     function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
         external
     {
-        require(deadline >= block.timestamp, "Tayaswap: EXPIRED");
+        require(deadline >= block.timestamp, "Swap: EXPIRED");
         bytes32 digest = keccak256(
             abi.encodePacked(
                 "\x19\x01",
@@ -85,7 +85,7 @@ contract TayaswapERC20 is ITayaswapERC20 {
             )
         );
         address recoveredAddress = ecrecover(digest, v, r, s);
-        require(recoveredAddress != address(0) && recoveredAddress == owner, "Tayaswap: INVALID_SIGNATURE");
+        require(recoveredAddress != address(0) && recoveredAddress == owner, "Swap: INVALID_SIGNATURE");
         _approve(owner, spender, value);
     }
 }

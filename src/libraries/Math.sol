@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.25;
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity 0.8.25;
 
 // A library for performing various math operations
 

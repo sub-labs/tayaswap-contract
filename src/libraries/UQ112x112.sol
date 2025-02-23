@@ -1,6 +1,5 @@
-// SPDX-License-Identifier: MIT
-
-pragma solidity ^0.8.25;
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity 0.8.25;
 
 library UQ112x112 {
     uint224 constant Q112 = 2 ** 112;
