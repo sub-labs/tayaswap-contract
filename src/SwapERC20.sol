@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity =0.5.16;
+pragma solidity 0.8.25;
 
 import "./interfaces/ISwapERC20.sol";
-import "./libraries/SafeMath.sol";
 
 contract SwapERC20 is ISwapERC20 {
-    using SafeMath for uint256;
-
     string public constant name = "Swap LPs";
     string public constant symbol = "Swap-LP";
     uint8 public constant decimals = 18;
@@ -19,13 +16,10 @@ contract SwapERC20 is ISwapERC20 {
     bytes32 public constant PERMIT_TYPEHASH = 0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
     mapping(address => uint256) public nonces;
 
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-    event Transfer(address indexed from, address indexed to, uint256 value);
-
-    constructor() public {
+    constructor() {
         uint256 chainId;
         assembly {
-            chainId := chainid
+            chainId := chainid()
         }
         DOMAIN_SEPARATOR = keccak256(
             abi.encode(
@@ -39,33 +33,25 @@ contract SwapERC20 is ISwapERC20 {
     }
 
     function _mint(address to, uint256 value) internal {
-        totalSupply = totalSupply.add(value);
-        balanceOf[to] = balanceOf[to].add(value);
+        totalSupply = totalSupply + value;
+        balanceOf[to] = balanceOf[to] + value;
         emit Transfer(address(0), to, value);
     }
 
     function _burn(address from, uint256 value) internal {
-        balanceOf[from] = balanceOf[from].sub(value);
-        totalSupply = totalSupply.sub(value);
+        balanceOf[from] = balanceOf[from] - value;
+        totalSupply = totalSupply - value;
         emit Transfer(from, address(0), value);
     }
 
-    function _approve(
-        address owner,
-        address spender,
-        uint256 value
-    ) private {
+    function _approve(address owner, address spender, uint256 value) private {
         allowance[owner][spender] = value;
         emit Approval(owner, spender, value);
     }
 
-    function _transfer(
-        address from,
-        address to,
-        uint256 value
-    ) private {
-        balanceOf[from] = balanceOf[from].sub(value);
-        balanceOf[to] = balanceOf[to].add(value);
+    function _transfer(address from, address to, uint256 value) private {
+        balanceOf[from] = balanceOf[from] - value;
+        balanceOf[to] = balanceOf[to] + value;
         emit Transfer(from, to, value);
     }
 
@@ -79,27 +65,17 @@ contract SwapERC20 is ISwapERC20 {
         return true;
     }
 
-    function transferFrom(
-        address from,
-        address to,
-        uint256 value
-    ) external returns (bool) {
-        if (allowance[from][msg.sender] != uint256(-1)) {
-            allowance[from][msg.sender] = allowance[from][msg.sender].sub(value);
+    function transferFrom(address from, address to, uint256 value) external returns (bool) {
+        if (allowance[from][msg.sender] != uint256(0)) {
+            allowance[from][msg.sender] = allowance[from][msg.sender] - value;
         }
         _transfer(from, to, value);
         return true;
     }
 
-    function permit(
-        address owner,
-        address spender,
-        uint256 value,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external {
+    function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+        external
+    {
         require(deadline >= block.timestamp, "Swap: EXPIRED");
         bytes32 digest = keccak256(
             abi.encodePacked(

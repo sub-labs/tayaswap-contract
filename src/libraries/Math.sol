@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity =0.5.16;
+pragma solidity 0.8.25;
 
-// a library for performing various math operations
+// A library for performing various math operations
 
 library Math {
     function min(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        z = x < y ? x : y;
+        return x < y ? x : y;
     }
 
-    // babylonian method (https://en.wikipedia.org/wiki/Methods_of_computing_square_roots#Babylonian_method)
+    // Babylonian method (https://en.wikipedia.org/wiki/Methods_of_computing_square_roots#Babylonian_method)
     function sqrt(uint256 y) internal pure returns (uint256 z) {
         if (y > 3) {
             z = y;
@@ -19,6 +19,9 @@ library Math {
             }
         } else if (y != 0) {
             z = 1;
+        } else {
+            z = 0;
         }
+        return z;
     }
 }

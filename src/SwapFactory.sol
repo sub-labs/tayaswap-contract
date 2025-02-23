@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity =0.5.16;
+pragma solidity 0.8.25;
 
-import './interfaces/ISwapFactory.sol';
-import './SwapPair.sol';
+import "./interfaces/ISwapFactory.sol";
+import "./SwapPair.sol";
 
 contract SwapFactory is ISwapFactory {
     //  TODO: If u updated the pair u should copy this Pair hash and update swapLibrary
@@ -14,21 +14,19 @@ contract SwapFactory is ISwapFactory {
     mapping(address => mapping(address => address)) public getPair;
     address[] public allPairs;
 
-    event PairCreated(address indexed token0, address indexed token1, address pair, uint);
-
-    constructor(address _feeToSetter) public {
+    constructor(address _feeToSetter) {
         feeToSetter = _feeToSetter;
     }
 
-    function allPairsLength() external view returns (uint) {
+    function allPairsLength() external view returns (uint256) {
         return allPairs.length;
     }
 
     function createPair(address tokenA, address tokenB) external returns (address pair) {
-        require(tokenA != tokenB, 'SwapFactory: IDENTICAL_ADDRESSES');
+        require(tokenA != tokenB, "SwapFactory: IDENTICAL_ADDRESSES");
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        require(token0 != address(0), 'SwapFactory: ZERO_ADDRESS');
-        require(getPair[token0][token1] == address(0), 'SwapFactory: PAIR_EXISTS'); // single check is sufficient
+        require(token0 != address(0), "SwapFactory: ZERO_ADDRESS");
+        require(getPair[token0][token1] == address(0), "SwapFactory: PAIR_EXISTS"); // single check is sufficient
         bytes memory bytecode = type(SwapPair).creationCode;
         bytes32 salt = keccak256(abi.encodePacked(token0, token1));
         assembly {
@@ -42,12 +40,12 @@ contract SwapFactory is ISwapFactory {
     }
 
     function setFeeTo(address _feeTo) external {
-        require(msg.sender == feeToSetter, 'SwapFactory: FORBIDDEN');
+        require(msg.sender == feeToSetter, "SwapFactory: FORBIDDEN");
         feeTo = _feeTo;
     }
 
     function setFeeToSetter(address _feeToSetter) external {
-        require(msg.sender == feeToSetter, 'SwapFactory: FORBIDDEN');
+        require(msg.sender == feeToSetter, "SwapFactory: FORBIDDEN");
         feeToSetter = _feeToSetter;
     }
 }

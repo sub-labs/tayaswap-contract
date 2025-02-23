@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity >=0.5.0;
+pragma solidity 0.8.25;
 
-import "./SafeMath.sol";
 import "../interfaces/ISwapFactory.sol";
 import "../interfaces/ISwapPair.sol";
+import "../SwapPair.sol";
 
 library SwapLibrary {
-    using SafeMath for uint256;
-
     // returns sorted token addresses, used to handle return values from pairs sorted in this order
     function sortTokens(address tokenA, address tokenB) internal pure returns (address token0, address token1) {
         require(tokenA != tokenB, "SwapLibrary: IDENTICAL_ADDRESSES");
@@ -16,21 +14,18 @@ library SwapLibrary {
     }
 
     // calculates the CREATE2 address for a pair without making any external calls
-    function pairFor(
-        address factory,
-        address tokenA,
-        address tokenB
-    ) internal pure returns (address pair) {
+    function pairFor(address factory, address tokenA, address tokenB) internal pure returns (address pair) {
         (address token0, address token1) = sortTokens(tokenA, tokenB);
         pair = address(
-            uint256(
-                keccak256(
-                    abi.encodePacked(
-                        hex"ff",
-                        factory,
-                        keccak256(abi.encodePacked(token0, token1)),
-                        //  TODO: If u updated the pair u should copy this Pair hash and update swapLibrary
-                        hex"d6cf78ed9a97cc64d7934928e49ddb248d4bc896306c6c838ae00fc4550564e9" // init code hash
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            hex"ff",
+                            factory,
+                            keccak256(abi.encodePacked(token0, token1)),
+                            keccak256(type(SwapPair).creationCode) // init code hash
+                        )
                     )
                 )
             )
@@ -38,61 +33,57 @@ library SwapLibrary {
     }
 
     // fetches and sorts the reserves for a pair
-    function getReserves(
-        address factory,
-        address tokenA,
-        address tokenB
-    ) internal view returns (uint256 reserveA, uint256 reserveB) {
-        (address token0, ) = sortTokens(tokenA, tokenB);
+    function getReserves(address factory, address tokenA, address tokenB)
+        internal
+        view
+        returns (uint256 reserveA, uint256 reserveB)
+    {
+        (address token0,) = sortTokens(tokenA, tokenB);
         pairFor(factory, tokenA, tokenB);
-        (uint256 reserve0, uint256 reserve1, ) = ISwapPair(pairFor(factory, tokenA, tokenB)).getReserves();
+        (uint256 reserve0, uint256 reserve1,) = ISwapPair(pairFor(factory, tokenA, tokenB)).getReserves();
         (reserveA, reserveB) = tokenA == token0 ? (reserve0, reserve1) : (reserve1, reserve0);
     }
 
     // given some amount of an asset and pair reserves, returns an equivalent amount of the other asset
-    function quote(
-        uint256 amountA,
-        uint256 reserveA,
-        uint256 reserveB
-    ) internal pure returns (uint256 amountB) {
+    function quote(uint256 amountA, uint256 reserveA, uint256 reserveB) internal pure returns (uint256 amountB) {
         require(amountA > 0, "SwapLibrary: INSUFFICIENT_AMOUNT");
         require(reserveA > 0 && reserveB > 0, "SwapLibrary: INSUFFICIENT_LIQUIDITY");
-        amountB = amountA.mul(reserveB) / reserveA;
+        amountB = amountA * reserveB / reserveA;
     }
 
     // given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset
-    function getAmountOut(
-        uint256 amountIn,
-        uint256 reserveIn,
-        uint256 reserveOut
-    ) internal pure returns (uint256 amountOut) {
+    function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut)
+        internal
+        pure
+        returns (uint256 amountOut)
+    {
         require(amountIn > 0, "SwapLibrary: INSUFFICIENT_INPUT_AMOUNT");
         require(reserveIn > 0 && reserveOut > 0, "SwapLibrary: INSUFFICIENT_LIQUIDITY");
-        uint256 amountInWithFee = amountIn.mul(9975);
-        uint256 numerator = amountInWithFee.mul(reserveOut);
-        uint256 denominator = reserveIn.mul(10000).add(amountInWithFee);
+        uint256 amountInWithFee = amountIn * 9975;
+        uint256 numerator = amountInWithFee * reserveOut;
+        uint256 denominator = reserveIn * 1000 + amountInWithFee;
         amountOut = numerator / denominator;
     }
 
     // given an output amount of an asset and pair reserves, returns a required input amount of the other asset
-    function getAmountIn(
-        uint256 amountOut,
-        uint256 reserveIn,
-        uint256 reserveOut
-    ) internal pure returns (uint256 amountIn) {
+    function getAmountIn(uint256 amountOut, uint256 reserveIn, uint256 reserveOut)
+        internal
+        pure
+        returns (uint256 amountIn)
+    {
         require(amountOut > 0, "SwapLibrary: INSUFFICIENT_OUTPUT_AMOUNT");
         require(reserveIn > 0 && reserveOut > 0, "SwapLibrary: INSUFFICIENT_LIQUIDITY");
-        uint256 numerator = reserveIn.mul(amountOut).mul(10000);
-        uint256 denominator = reserveOut.sub(amountOut).mul(9975);
-        amountIn = (numerator / denominator).add(1);
+        uint256 numerator = reserveIn * amountOut * 1000;
+        uint256 denominator = (reserveOut - amountOut) * 9975;
+        amountIn = (numerator / denominator) + 1;
     }
 
     // performs chained getAmountOut calculations on any number of pairs
-    function getAmountsOut(
-        address factory,
-        uint256 amountIn,
-        address[] memory path
-    ) internal view returns (uint256[] memory amounts) {
+    function getAmountsOut(address factory, uint256 amountIn, address[] memory path)
+        internal
+        view
+        returns (uint256[] memory amounts)
+    {
         require(path.length >= 2, "SwapLibrary: INVALID_PATH");
         amounts = new uint256[](path.length);
         amounts[0] = amountIn;
@@ -103,11 +94,11 @@ library SwapLibrary {
     }
 
     // performs chained getAmountIn calculations on any number of pairs
-    function getAmountsIn(
-        address factory,
-        uint256 amountOut,
-        address[] memory path
-    ) internal view returns (uint256[] memory amounts) {
+    function getAmountsIn(address factory, uint256 amountOut, address[] memory path)
+        internal
+        view
+        returns (uint256[] memory amounts)
+    {
         require(path.length >= 2, "SwapLibrary: INVALID_PATH");
         amounts = new uint256[](path.length);
         amounts[amounts.length - 1] = amountOut;

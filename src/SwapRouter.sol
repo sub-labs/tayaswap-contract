@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity =0.6.6;
+pragma solidity 0.8.25;
 
 import "./libraries/TransferHelper.sol";
 import "./libraries/SwapLibrary.sol";
-import "./libraries/SafeMath.sol";
 import "./interfaces/IERC20.sol";
 
 import "./interfaces/ISwapRouter.sol";
@@ -11,8 +10,6 @@ import "./interfaces/ISwapFactory.sol";
 import "./interfaces/IWETH.sol";
 
 contract SwapRouter is ISwapRouter {
-    using SafeMath for uint256;
-
     address public immutable override factory;
     address public immutable override WETH;
 
@@ -21,7 +18,7 @@ contract SwapRouter is ISwapRouter {
         _;
     }
 
-    constructor(address _factory, address _WETH) public {
+    constructor(address _factory, address _WETH) {
         factory = _factory;
         WETH = _WETH;
     }
@@ -69,17 +66,7 @@ contract SwapRouter is ISwapRouter {
         uint256 amountBMin,
         address to,
         uint256 deadline
-    )
-        external
-        virtual
-        override
-        ensure(deadline)
-        returns (
-            uint256 amountA,
-            uint256 amountB,
-            uint256 liquidity
-        )
-    {
+    ) external virtual override ensure(deadline) returns (uint256 amountA, uint256 amountB, uint256 liquidity) {
         (amountA, amountB) = _addLiquidity(tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin);
         address pair = SwapLibrary.pairFor(factory, tokenA, tokenB);
         TransferHelper.safeTransferFrom(tokenA, msg.sender, pair, amountA);
@@ -100,20 +87,10 @@ contract SwapRouter is ISwapRouter {
         virtual
         override
         ensure(deadline)
-        returns (
-            uint256 amountToken,
-            uint256 amountETH,
-            uint256 liquidity
-        )
+        returns (uint256 amountToken, uint256 amountETH, uint256 liquidity)
     {
-        (amountToken, amountETH) = _addLiquidity(
-            token,
-            WETH,
-            amountTokenDesired,
-            msg.value,
-            amountTokenMin,
-            amountETHMin
-        );
+        (amountToken, amountETH) =
+            _addLiquidity(token, WETH, amountTokenDesired, msg.value, amountTokenMin, amountETHMin);
         address pair = SwapLibrary.pairFor(factory, token, WETH);
         TransferHelper.safeTransferFrom(token, msg.sender, pair, amountToken);
         IWETH(WETH).deposit{value: amountETH}();
@@ -136,7 +113,7 @@ contract SwapRouter is ISwapRouter {
         address pair = SwapLibrary.pairFor(factory, tokenA, tokenB);
         ISwapPair(pair).transferFrom(msg.sender, pair, liquidity); // send liquidity to pair
         (uint256 amount0, uint256 amount1) = ISwapPair(pair).burn(to);
-        (address token0, ) = SwapLibrary.sortTokens(tokenA, tokenB);
+        (address token0,) = SwapLibrary.sortTokens(tokenA, tokenB);
         (amountA, amountB) = tokenA == token0 ? (amount0, amount1) : (amount1, amount0);
         require(amountA >= amountAMin, "SwapRouter: INSUFFICIENT_A_AMOUNT");
         require(amountB >= amountBMin, "SwapRouter: INSUFFICIENT_B_AMOUNT");
@@ -150,15 +127,8 @@ contract SwapRouter is ISwapRouter {
         address to,
         uint256 deadline
     ) public virtual override ensure(deadline) returns (uint256 amountToken, uint256 amountETH) {
-        (amountToken, amountETH) = removeLiquidity(
-            token,
-            WETH,
-            liquidity,
-            amountTokenMin,
-            amountETHMin,
-            address(this),
-            deadline
-        );
+        (amountToken, amountETH) =
+            removeLiquidity(token, WETH, liquidity, amountTokenMin, amountETHMin, address(this), deadline);
         TransferHelper.safeTransfer(token, to, amountToken);
         IWETH(WETH).withdraw(amountETH);
         TransferHelper.safeTransferETH(to, amountETH);
@@ -178,7 +148,7 @@ contract SwapRouter is ISwapRouter {
         bytes32 s
     ) external virtual override returns (uint256 amountA, uint256 amountB) {
         address pair = SwapLibrary.pairFor(factory, tokenA, tokenB);
-        uint256 value = approveMax ? uint256(-1) : liquidity;
+        uint256 value = approveMax ? type(uint256).max : liquidity;
         ISwapPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
         (amountA, amountB) = removeLiquidity(tokenA, tokenB, liquidity, amountAMin, amountBMin, to, deadline);
     }
@@ -196,7 +166,7 @@ contract SwapRouter is ISwapRouter {
         bytes32 s
     ) external virtual override returns (uint256 amountToken, uint256 amountETH) {
         address pair = SwapLibrary.pairFor(factory, token, WETH);
-        uint256 value = approveMax ? uint256(-1) : liquidity;
+        uint256 value = approveMax ? type(uint256).max : liquidity;
         ISwapPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
         (amountToken, amountETH) = removeLiquidityETH(token, liquidity, amountTokenMin, amountETHMin, to, deadline);
     }
@@ -229,28 +199,19 @@ contract SwapRouter is ISwapRouter {
         bytes32 s
     ) external virtual override returns (uint256 amountETH) {
         address pair = SwapLibrary.pairFor(factory, token, WETH);
-        uint256 value = approveMax ? uint256(-1) : liquidity;
+        uint256 value = approveMax ? type(uint256).max : liquidity;
         ISwapPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
         amountETH = removeLiquidityETHSupportingFeeOnTransferTokens(
-            token,
-            liquidity,
-            amountTokenMin,
-            amountETHMin,
-            to,
-            deadline
+            token, liquidity, amountTokenMin, amountETHMin, to, deadline
         );
     }
 
     // **** SWAP ****
     // requires the initial amount to have already been sent to the first pair
-    function _swap(
-        uint256[] memory amounts,
-        address[] memory path,
-        address _to
-    ) internal virtual {
+    function _swap(uint256[] memory amounts, address[] memory path, address _to) internal virtual {
         for (uint256 i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
-            (address token0, ) = SwapLibrary.sortTokens(input, output);
+            (address token0,) = SwapLibrary.sortTokens(input, output);
             uint256 amountOut = amounts[i + 1];
             (uint256 amount0Out, uint256 amount1Out) =
                 input == token0 ? (uint256(0), amountOut) : (amountOut, uint256(0));
@@ -268,12 +229,7 @@ contract SwapRouter is ISwapRouter {
     ) external virtual override ensure(deadline) returns (uint256[] memory amounts) {
         amounts = SwapLibrary.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, "SwapRouter: INSUFFICIENT_OUTPUT_AMOUNT");
-        TransferHelper.safeTransferFrom(
-            path[0],
-            msg.sender,
-            SwapLibrary.pairFor(factory, path[0], path[1]),
-            amounts[0]
-        );
+        TransferHelper.safeTransferFrom(path[0], msg.sender, SwapLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
         _swap(amounts, path, to);
     }
 
@@ -286,21 +242,18 @@ contract SwapRouter is ISwapRouter {
     ) external virtual override ensure(deadline) returns (uint256[] memory amounts) {
         amounts = SwapLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= amountInMax, "SwapRouter: EXCESSIVE_INPUT_AMOUNT");
-        TransferHelper.safeTransferFrom(
-            path[0],
-            msg.sender,
-            SwapLibrary.pairFor(factory, path[0], path[1]),
-            amounts[0]
-        );
+        TransferHelper.safeTransferFrom(path[0], msg.sender, SwapLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
         _swap(amounts, path, to);
     }
 
-    function swapExactETHForTokens(
-        uint256 amountOutMin,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external payable virtual override ensure(deadline) returns (uint256[] memory amounts) {
+    function swapExactETHForTokens(uint256 amountOutMin, address[] calldata path, address to, uint256 deadline)
+        external
+        payable
+        virtual
+        override
+        ensure(deadline)
+        returns (uint256[] memory amounts)
+    {
         require(path[0] == WETH, "SwapRouter: INVALID_PATH");
         amounts = SwapLibrary.getAmountsOut(factory, msg.value, path);
         require(amounts[amounts.length - 1] >= amountOutMin, "SwapRouter: INSUFFICIENT_OUTPUT_AMOUNT");
@@ -319,12 +272,7 @@ contract SwapRouter is ISwapRouter {
         require(path[path.length - 1] == WETH, "SwapRouter: INVALID_PATH");
         amounts = SwapLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= amountInMax, "SwapRouter: EXCESSIVE_INPUT_AMOUNT");
-        TransferHelper.safeTransferFrom(
-            path[0],
-            msg.sender,
-            SwapLibrary.pairFor(factory, path[0], path[1]),
-            amounts[0]
-        );
+        TransferHelper.safeTransferFrom(path[0], msg.sender, SwapLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
         _swap(amounts, path, address(this));
         IWETH(WETH).withdraw(amounts[amounts.length - 1]);
         TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
@@ -340,23 +288,20 @@ contract SwapRouter is ISwapRouter {
         require(path[path.length - 1] == WETH, "SwapRouter: INVALID_PATH");
         amounts = SwapLibrary.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, "SwapRouter: INSUFFICIENT_OUTPUT_AMOUNT");
-        TransferHelper.safeTransferFrom(
-            path[0],
-            msg.sender,
-            SwapLibrary.pairFor(factory, path[0], path[1]),
-            amounts[0]
-        );
+        TransferHelper.safeTransferFrom(path[0], msg.sender, SwapLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
         _swap(amounts, path, address(this));
         IWETH(WETH).withdraw(amounts[amounts.length - 1]);
         TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
     }
 
-    function swapETHForExactTokens(
-        uint256 amountOut,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external payable virtual override ensure(deadline) returns (uint256[] memory amounts) {
+    function swapETHForExactTokens(uint256 amountOut, address[] calldata path, address to, uint256 deadline)
+        external
+        payable
+        virtual
+        override
+        ensure(deadline)
+        returns (uint256[] memory amounts)
+    {
         require(path[0] == WETH, "SwapRouter: INVALID_PATH");
         amounts = SwapLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= msg.value, "SwapRouter: EXCESSIVE_INPUT_AMOUNT");
@@ -372,16 +317,16 @@ contract SwapRouter is ISwapRouter {
     function _swapSupportingFeeOnTransferTokens(address[] memory path, address _to) internal virtual {
         for (uint256 i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
-            (address token0, ) = SwapLibrary.sortTokens(input, output);
+            (address token0,) = SwapLibrary.sortTokens(input, output);
             ISwapPair pair = ISwapPair(SwapLibrary.pairFor(factory, input, output));
             uint256 amountInput;
             uint256 amountOutput;
             {
                 // scope to avoid stack too deep errors
-                (uint256 reserve0, uint256 reserve1, ) = pair.getReserves();
+                (uint256 reserve0, uint256 reserve1,) = pair.getReserves();
                 (uint256 reserveInput, uint256 reserveOutput) =
                     input == token0 ? (reserve0, reserve1) : (reserve1, reserve0);
-                amountInput = IERC20(input).balanceOf(address(pair)).sub(reserveInput);
+                amountInput = IERC20(input).balanceOf(address(pair)) - reserveInput;
                 amountOutput = SwapLibrary.getAmountOut(amountInput, reserveInput, reserveOutput);
             }
             (uint256 amount0Out, uint256 amount1Out) =
@@ -398,16 +343,11 @@ contract SwapRouter is ISwapRouter {
         address to,
         uint256 deadline
     ) external virtual override ensure(deadline) {
-        TransferHelper.safeTransferFrom(
-            path[0],
-            msg.sender,
-            SwapLibrary.pairFor(factory, path[0], path[1]),
-            amountIn
-        );
+        TransferHelper.safeTransferFrom(path[0], msg.sender, SwapLibrary.pairFor(factory, path[0], path[1]), amountIn);
         uint256 balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
         _swapSupportingFeeOnTransferTokens(path, to);
         require(
-            IERC20(path[path.length - 1]).balanceOf(to).sub(balanceBefore) >= amountOutMin,
+            IERC20(path[path.length - 1]).balanceOf(to) - balanceBefore >= amountOutMin,
             "SwapRouter: INSUFFICIENT_OUTPUT_AMOUNT"
         );
     }
@@ -425,7 +365,7 @@ contract SwapRouter is ISwapRouter {
         uint256 balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
         _swapSupportingFeeOnTransferTokens(path, to);
         require(
-            IERC20(path[path.length - 1]).balanceOf(to).sub(balanceBefore) >= amountOutMin,
+            IERC20(path[path.length - 1]).balanceOf(to) - balanceBefore >= amountOutMin,
             "SwapRouter: INSUFFICIENT_OUTPUT_AMOUNT"
         );
     }
@@ -438,12 +378,7 @@ contract SwapRouter is ISwapRouter {
         uint256 deadline
     ) external virtual override ensure(deadline) {
         require(path[path.length - 1] == WETH, "SwapRouter: INVALID_PATH");
-        TransferHelper.safeTransferFrom(
-            path[0],
-            msg.sender,
-            SwapLibrary.pairFor(factory, path[0], path[1]),
-            amountIn
-        );
+        TransferHelper.safeTransferFrom(path[0], msg.sender, SwapLibrary.pairFor(factory, path[0], path[1]), amountIn);
         _swapSupportingFeeOnTransferTokens(path, address(this));
         uint256 amountOut = IERC20(WETH).balanceOf(address(this));
         require(amountOut >= amountOutMin, "SwapRouter: INSUFFICIENT_OUTPUT_AMOUNT");
@@ -452,27 +387,33 @@ contract SwapRouter is ISwapRouter {
     }
 
     // **** LIBRARY FUNCTIONS ****
-    function quote(
-        uint256 amountA,
-        uint256 reserveA,
-        uint256 reserveB
-    ) public pure virtual override returns (uint256 amountB) {
+    function quote(uint256 amountA, uint256 reserveA, uint256 reserveB)
+        public
+        pure
+        virtual
+        override
+        returns (uint256 amountB)
+    {
         return SwapLibrary.quote(amountA, reserveA, reserveB);
     }
 
-    function getAmountOut(
-        uint256 amountIn,
-        uint256 reserveIn,
-        uint256 reserveOut
-    ) public pure virtual override returns (uint256 amountOut) {
+    function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut)
+        public
+        pure
+        virtual
+        override
+        returns (uint256 amountOut)
+    {
         return SwapLibrary.getAmountOut(amountIn, reserveIn, reserveOut);
     }
 
-    function getAmountIn(
-        uint256 amountOut,
-        uint256 reserveIn,
-        uint256 reserveOut
-    ) public pure virtual override returns (uint256 amountIn) {
+    function getAmountIn(uint256 amountOut, uint256 reserveIn, uint256 reserveOut)
+        public
+        pure
+        virtual
+        override
+        returns (uint256 amountIn)
+    {
         return SwapLibrary.getAmountIn(amountOut, reserveIn, reserveOut);
     }
 
